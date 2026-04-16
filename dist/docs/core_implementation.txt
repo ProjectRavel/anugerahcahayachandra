@@ -1,0 +1,367 @@
+// ============================================================
+// FILE: middleware.ts (root project)
+// Proteksi route berbasis Role (RBAC)
+// ============================================================
+
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
+
+// Peta akses: route prefix → role yang diizinkan
+const ROUTE_PERMISSIONS: Record<string, string[]> = {
+  '/dashboard/hr':         ['HR', 'MANAGER'],
+  '/dashboard/gudang':     ['ADMIN_GUDANG', 'MANAGER'],
+  '/dashboard/packing':    ['PACKING', 'SUPERVISOR', 'MANAGER'],
+  '/dashboard/supervisor': ['SUPERVISOR', 'MANAGER'],
+  '/dashboard/manager':    ['MANAGER'],
+}
+
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            request.cookies.set(name, value)
+          )
+          supabaseResponse = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // Refresh session (penting untuk SSR)
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { pathname } = request.nextUrl
+
+  // Redirect ke login jika belum auth
+  if (!user && pathname.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  // Cek permission berdasarkan role
+  if (user && pathname.startsWith('/dashboard')) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const userRole = profile?.role
+
+    for (const [routePrefix, allowedRoles] of Object.entries(ROUTE_PERMISSIONS)) {
+      if (pathname.startsWith(routePrefix) && !allowedRoles.includes(userRole ?? '')) {
+        // Redirect ke dashboard utama jika tidak punya akses
+        return NextResponse.redirect(new URL('/dashboard', request.url))
+      }
+    }
+  }
+
+  return supabaseResponse
+}
+
+export const config = {
+  matcher: ['/dashboard/:path*', '/login', '/register'],
+}
+
+
+// ============================================================
+// FILE: lib/supabase/server.ts
+// Supabase client untuk Server Components & Server Actions
+// ============================================================
+
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import type { Database } from '@/types/database'
+
+export async function createClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: (cookiesToSet) => {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Server Components tidak bisa set cookie — diabaikan
+          }
+        },
+      },
+    }
+  )
+}
+
+// Supabase Admin Client (bypass RLS) — HANYA untuk server-side yang trusted
+export function createAdminClient() {
+  const { createClient: createSupabaseClient } = require('@supabase/supabase-js')
+  return createSupabaseClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Jangan expose ke client!
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+
+// ============================================================
+// FILE: lib/supabase/client.ts
+// Supabase client untuk Client Components
+// ============================================================
+
+import { createBrowserClient } from '@supabase/ssr'
+import type { Database } from '@/types/database'
+
+export function createClient() {
+  return createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+
+// ============================================================
+// FILE: types/database.ts
+// Type definitions yang di-generate dari Supabase schema
+// Jalankan: npx supabase gen types typescript --local > types/database.ts
+// ============================================================
+
+export type UserRole = 'HR' | 'SUPERVISOR' | 'ADMIN_GUDANG' | 'PACKING' | 'MANAGER'
+export type OrderStatus = 'PENDING' | 'PROCESSING' | 'PACKING' | 'SHIPPED' | 'COMPLETED'
+export type OrderType = 'INBOUND' | 'OUTBOUND'
+
+export interface Profile {
+  id: string
+  full_name: string
+  role: UserRole
+  status: 'active' | 'inactive'
+  created_at: string
+}
+
+export interface Product {
+  id: string
+  sku: string
+  name: string
+  stock: number
+  unit: 'pcs' | 'dus'
+  price_retail: number
+  price_wholesale: number
+  min_stock_threshold: number
+}
+
+export interface Order {
+  id: string
+  type: OrderType
+  status: OrderStatus
+  created_by: string
+  notes?: string
+  created_at: string
+}
+
+// Placeholder — ganti dengan output `supabase gen types`
+export type Database = {
+  public: {
+    Tables: {
+      profiles:    { Row: Profile;  Insert: Omit<Profile, 'created_at'>; Update: Partial<Profile> }
+      products:    { Row: Product;  Insert: Omit<Product, 'id'>;          Update: Partial<Product> }
+      orders:      { Row: Order;    Insert: Omit<Order, 'id' | 'created_at'>; Update: Partial<Order> }
+      order_items: { Row: any;      Insert: any; Update: any }
+      attendance:  { Row: any;      Insert: any; Update: any }
+    }
+  }
+}
+
+
+// ============================================================
+// FILE: actions/orders.ts
+// Server Actions untuk manajemen order
+// ============================================================
+
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
+import type { OrderStatus } from '@/types/database'
+
+// Status yang valid sebagai transisi
+const VALID_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  PENDING:    ['PROCESSING'],
+  PROCESSING: ['PACKING'],
+  PACKING:    ['SHIPPED'],
+  SHIPPED:    ['COMPLETED'],
+  COMPLETED:  [],
+}
+
+/**
+ * Update status order dengan validasi transisi yang benar
+ */
+export async function updateOrderStatus(
+  orderId: string,
+  newStatus: OrderStatus
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  // Ambil order saat ini
+  const { data: order, error: fetchError } = await supabase
+    .from('orders')
+    .select('id, status')
+    .eq('id', orderId)
+    .single()
+
+  if (fetchError || !order) {
+    return { success: false, error: 'Order tidak ditemukan.' }
+  }
+
+  // Validasi transisi status
+  const allowedNext = VALID_TRANSITIONS[order.status as OrderStatus]
+  if (!allowedNext.includes(newStatus)) {
+    return {
+      success: false,
+      error: `Tidak bisa mengubah status dari ${order.status} ke ${newStatus}.`,
+    }
+  }
+
+  // Update status di database
+  const { error: updateError } = await supabase
+    .from('orders')
+    .update({ status: newStatus })
+    .eq('id', orderId)
+
+  if (updateError) {
+    // Tangkap error stok tidak cukup dari trigger PostgreSQL
+    if (updateError.code === 'P0001') {
+      return { success: false, error: 'Stok produk tidak mencukupi untuk menyelesaikan order ini.' }
+    }
+    return { success: false, error: updateError.message }
+  }
+
+  // Revalidate halaman yang terdampak
+  revalidatePath('/dashboard/supervisor')
+  revalidatePath('/dashboard/gudang')
+  revalidatePath(`/dashboard/orders/${orderId}`)
+
+  return { success: true }
+}
+
+/**
+ * Khusus: Update PROCESSING → PACKING (untuk tombol di halaman supervisor)
+ */
+export async function moveToPackingAction(orderId: string) {
+  return updateOrderStatus(orderId, 'PACKING')
+}
+
+/**
+ * Buat order baru beserta item-itemnya (dalam satu transaksi)
+ */
+export async function createOrder(formData: FormData) {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Tidak terautentikasi.' }
+
+  const type = formData.get('type') as 'INBOUND' | 'OUTBOUND'
+  const notes = formData.get('notes') as string
+  const items = JSON.parse(formData.get('items') as string) as
+    Array<{ product_id: string; quantity: number }>
+
+  // Buat header order
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .insert({ type, notes, created_by: user.id, status: 'PENDING' })
+    .select('id')
+    .single()
+
+  if (orderError || !order) {
+    return { success: false, error: orderError?.message }
+  }
+
+  // Insert semua items sekaligus
+  const { error: itemsError } = await supabase
+    .from('order_items')
+    .insert(items.map(item => ({ ...item, order_id: order.id })))
+
+  if (itemsError) {
+    return { success: false, error: itemsError.message }
+  }
+
+  revalidatePath('/dashboard/gudang')
+  return { success: true, orderId: order.id }
+}
+
+
+// ============================================================
+// FILE: actions/attendance.ts
+// Server Actions untuk absensi
+// ============================================================
+
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
+
+export async function checkIn(): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { success: false, error: 'Tidak terautentikasi.' }
+
+  const today = new Date().toISOString().split('T')[0]
+
+  // Cek apakah sudah check-in hari ini
+  const { data: existing } = await supabase
+    .from('attendance')
+    .select('id, check_in')
+    .eq('user_id', user.id)
+    .eq('date', today)
+    .single()
+
+  if (existing?.check_in) {
+    return { success: false, error: 'Anda sudah melakukan check-in hari ini.' }
+  }
+
+  const { error } = await supabase
+    .from('attendance')
+    .upsert({
+      user_id: user.id,
+      date: today,
+      check_in: new Date().toISOString(),
+    })
+
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function checkOut(): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { success: false, error: 'Tidak terautentikasi.' }
+
+  const today = new Date().toISOString().split('T')[0]
+
+  const { error } = await supabase
+    .from('attendance')
+    .update({ check_out: new Date().toISOString() })
+    .eq('user_id', user.id)
+    .eq('date', today)
+    .is('check_out', null)
+
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}
