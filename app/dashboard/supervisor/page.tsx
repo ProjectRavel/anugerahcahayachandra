@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import StatsCard from '@/components/dashboard/StatsCard'
 import OrderQueueTable from '@/components/dashboard/OrderQueueTable'
-import { Package, Truck, PackageCheck, Clock } from 'lucide-react'
+import { Package, Truck, PackageCheck, Clock, ShieldCheck, AlertTriangle } from 'lucide-react'
 import type { UserRole } from '@/types/database'
 
 type QueueOrderRow = {
@@ -61,14 +61,36 @@ export default async function SupervisorDashboard() {
   ])
 
   const typedQueueOrders = (queueOrders ?? []) as QueueOrderRow[]
+  const totalActive = (pendingCount ?? 0) + (processingCount ?? 0) + (packingCount ?? 0) + (shippedCount ?? 0)
+  const readyForValidation = pendingCount ?? 0
+  const readyToComplete = shippedCount ?? 0
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard Supervisor</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Pantau status operasional gudang secara real-time
-        </p>
+      <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-indigo-700">
+              <ShieldCheck size={13} />
+              Supervisor Control Panel
+            </p>
+            <h1 className="text-2xl font-bold text-slate-900 mt-3">Dashboard Supervisor</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Pantau antrean operasional gudang secara real-time dan lakukan validasi outbound.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 min-w-[280px]">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Antrean Aktif</p>
+              <p className="text-xl font-bold text-slate-900 mt-1">{totalActive}</p>
+            </div>
+            <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wider text-rose-500 font-semibold">Butuh Tindakan</p>
+              <p className="text-xl font-bold text-rose-700 mt-1">{readyForValidation + readyToComplete}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <section>
@@ -104,6 +126,35 @@ export default async function SupervisorDashboard() {
             accent="rose"
             icon={Truck}
           />
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
+              <AlertTriangle size={16} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Perlu Validasi</p>
+              <p className="text-sm text-amber-800 mt-0.5">
+                {readyForValidation} order OUTBOUND masih status PENDING.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
+              <ShieldCheck size={16} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Siap Diselesaikan</p>
+              <p className="text-sm text-emerald-800 mt-0.5">
+                {readyToComplete} order OUTBOUND sudah SHIPPED dan bisa di-complete.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 

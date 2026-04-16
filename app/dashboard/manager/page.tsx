@@ -6,25 +6,68 @@ type OrdersTodayRow = {
   id: string
   type: 'INBOUND' | 'OUTBOUND'
   status: 'PENDING' | 'PROCESSING' | 'PACKING' | 'SHIPPED' | 'COMPLETED'
-  created_by_name: string | null
-  total_items: number
+  profiles: { full_name: string } | null
+  order_items: Array<{
+    quantity: number
+    products: { sku: string; name: string; price_wholesale: number } | null
+  }>
   created_at: string
 }
 
 export default async function ManagerReportsPage() {
   const supabase = await createClient()
 
+  const jakartaToday = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+  }).format(new Date())
+  const dayStart = new Date(`${jakartaToday}T00:00:00+07:00`)
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
   const { data: ordersToday } = await supabase
-    .from('v_orders_today')
-    .select('*')
+    .from('orders')
+    .select(
+      `
+      id, type, status, created_at,
+      profiles:created_by (full_name),
+      order_items (
+        quantity,
+        products (sku, name, price_wholesale)
+      )
+    `
+    )
+    .gte('created_at', dayStart.toISOString())
+    .lt('created_at', dayEnd.toISOString())
     .order('created_at', { ascending: false })
 
   const rows = (ordersToday ?? []) as OrdersTodayRow[]
+  const ordersWithSummary = rows.map((order) => {
+    const totalQty = order.order_items.reduce((sum, item) => sum + (item.quantity || 0), 0)
+    const totalValue = order.order_items.reduce(
+      (sum, item) => sum + (item.quantity || 0) * Number(item.products?.price_wholesale || 0),
+      0
+    )
+    const productSummary =
+      order.order_items.length === 0
+        ? '-'
+        : order.order_items
+            .map((item) => `${item.products?.name ?? 'Produk tidak dikenal'} x${item.quantity}`)
+            .join(', ')
 
-  const totalOrders = rows.length
-  const inboundOrders = rows.filter((r) => r.type === 'INBOUND').length
-  const outboundOrders = rows.filter((r) => r.type === 'OUTBOUND').length
-  const completedOrders = rows.filter((r) => r.status === 'COMPLETED').length
+    return {
+      ...order,
+      totalQty,
+      totalValue,
+      productSummary,
+    }
+  })
+
+  const totalOrders = ordersWithSummary.length
+  const inboundOrders = ordersWithSummary.filter((r) => r.type === 'INBOUND').length
+  const outboundOrders = ordersWithSummary.filter((r) => r.type === 'OUTBOUND').length
+  const completedOrders = ordersWithSummary.filter((r) => r.status === 'COMPLETED').length
+  const totalQtyAll = ordersWithSummary.reduce((sum, order) => sum + order.totalQty, 0)
+  const totalValueAll = ordersWithSummary.reduce((sum, order) => sum + order.totalValue, 0)
 
   return (
     <div className="space-y-8">
@@ -40,7 +83,7 @@ export default async function ManagerReportsPage() {
         <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">
           Ringkasan Order Hari Ini
         </h2>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <StatsCard
             title="Total Order"
             value={totalOrders}
@@ -69,6 +112,13 @@ export default async function ManagerReportsPage() {
             accent="rose"
             icon={CheckCircle2}
           />
+          <StatsCard
+            title="Total Nilai"
+            value={`Rp ${totalValueAll.toLocaleString('id-ID')}`}
+            subtitle={`${totalQtyAll.toLocaleString('id-ID')} barang`}
+            accent="indigo"
+            icon={BarChart3}
+          />
         </div>
       </section>
 
@@ -77,32 +127,35 @@ export default async function ManagerReportsPage() {
           <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
             Detail Order Hari Ini
           </h2>
-          <span className="text-xs text-slate-400">{rows.length} order</span>
+          <span className="text-xs text-slate-400">{ordersWithSummary.length} order</span>
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Waktu</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Order ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Tipe</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Dibuat oleh</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Total Item</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Waktu</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Order ID</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Tipe</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Dibuat oleh</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Detail Barang</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Qty</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Harga</th>
               </tr>
             </thead>
-            <tbody>
-              {rows.length === 0 ? (
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {ordersWithSummary.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-xs text-slate-400">
+                  <td colSpan={8} className="px-4 py-6 text-center text-xs text-slate-400">
                     Belum ada order yang dibuat hari ini.
                   </td>
                 </tr>
               ) : (
-                rows.map((order) => (
-                  <tr key={order.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3 text-xs text-slate-500">
+                ordersWithSummary.map((order) => (
+                  <tr key={order.id} className="hover:bg-slate-50/70">
+                    <td className="px-4 py-3 text-xs text-slate-500 tabular-nums whitespace-nowrap">
                       {new Date(order.created_at).toLocaleTimeString('id-ID', {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -115,19 +168,26 @@ export default async function ManagerReportsPage() {
                       {order.type}
                     </td>
                     <td className="px-4 py-3 text-xs">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-slate-200 bg-slate-100 text-slate-700">
                         {order.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-700">{order.created_by_name}</td>
-                    <td className="px-4 py-3 text-xs text-slate-700 text-right">
-                      {order.total_items}
+                    <td className="px-4 py-3 text-xs text-slate-700">{order.profiles?.full_name ?? '-'}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600 max-w-[320px]" title={order.productSummary}>
+                      <p className="line-clamp-2">{order.productSummary}</p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-700 text-right tabular-nums whitespace-nowrap">
+                      {order.totalQty.toLocaleString('id-ID')}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-700 text-right tabular-nums whitespace-nowrap">
+                      Rp {order.totalValue.toLocaleString('id-ID')}
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
     </div>

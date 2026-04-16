@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2, CheckCircle2, CircleDashed } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { completeOutboundAction, validateOutboundToProcessingAction } from '@/actions/orders'
 import type { OrderStatus, OrderType, UserRole } from '@/types/database'
@@ -84,30 +84,30 @@ export default function OrderQueueTable({
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="text-left py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 ID Order
               </th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="text-left py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Tipe
               </th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="text-left py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Status
               </th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="text-left py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Dibuat Oleh
               </th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="text-left py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Items
               </th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <th className="text-left py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 Waktu
               </th>
               <th className="py-3 px-4" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-slate-100 bg-white">
             {orders.map((order) => {
               const status = STATUS_CONFIG[order.status as OrderStatus]
               const type = TYPE_CONFIG[order.type as OrderType]
@@ -116,12 +116,12 @@ export default function OrderQueueTable({
               const canCompleteOutbound = order.type === 'OUTBOUND' && order.status === 'SHIPPED'
 
               return (
-                <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="py-3.5 px-4 font-mono text-xs text-slate-500">
+                <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
+                  <td className="py-3.5 px-4 font-mono text-xs text-slate-500 whitespace-nowrap">
                     #{order.id.slice(-8).toUpperCase()}
                   </td>
-                  <td className={cn('py-3.5 px-4 font-semibold text-xs', type.className)}>
-                    {type.label}
+                  <td className="py-3.5 px-4">
+                    <span className={cn('text-xs font-semibold', type.className)}>{type.label}</span>
                   </td>
                   <td className="py-3.5 px-4">
                     <span
@@ -133,13 +133,13 @@ export default function OrderQueueTable({
                       {status.label}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-slate-700">
+                  <td className="py-3.5 px-4 text-slate-700 text-xs">
                     {order.profiles?.full_name ?? '-'}
                   </td>
-                  <td className="py-3.5 px-4 text-slate-500">
+                  <td className="py-3.5 px-4 text-slate-600 text-xs tabular-nums whitespace-nowrap">
                     {order.order_items?.[0]?.count ?? 0} produk
                   </td>
-                  <td className="py-3.5 px-4 text-slate-400 text-xs">
+                  <td className="py-3.5 px-4 text-slate-500 text-xs whitespace-nowrap tabular-nums">
                     {new Intl.DateTimeFormat('id-ID', {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -157,8 +157,8 @@ export default function OrderQueueTable({
                         }
                         disabled={isLoading}
                         className={cn(
-                          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                          'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95',
+                          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                          'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-sm shadow-indigo-200',
                           'disabled:opacity-60 disabled:cursor-not-allowed'
                         )}
                       >
@@ -166,6 +166,7 @@ export default function OrderQueueTable({
                           <Loader2 size={12} className="animate-spin" />
                         ) : (
                           <>
+                            <CircleDashed size={12} />
                             Validasi <ArrowRight size={12} />
                           </>
                         )}
@@ -183,8 +184,8 @@ export default function OrderQueueTable({
                         }
                         disabled={isLoading}
                         className={cn(
-                          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                          'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95',
+                          'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                          'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 shadow-sm shadow-emerald-200',
                           'disabled:opacity-60 disabled:cursor-not-allowed'
                         )}
                       >
@@ -192,6 +193,7 @@ export default function OrderQueueTable({
                           <Loader2 size={12} className="animate-spin" />
                         ) : (
                           <>
+                            <CheckCircle2 size={12} />
                             Complete <ArrowRight size={12} />
                           </>
                         )}

@@ -20,6 +20,7 @@ type RecentProductHistoryItem = {
 
 interface ManagerOverviewProps {
   totalInventoryValue: number
+  totalInventoryUnits: number
   packingQueue: number
   todayAttendance: number
   totalStaff: number
@@ -35,6 +36,7 @@ interface ManagerOverviewProps {
 
 export default function ManagerOverview({
   totalInventoryValue,
+  totalInventoryUnits,
   packingQueue,
   todayAttendance,
   totalStaff,
@@ -79,7 +81,9 @@ export default function ManagerOverview({
           <p className="text-2xl font-bold text-slate-900 mb-1">
             Rp {totalInventoryValue.toLocaleString('id-ID')}
           </p>
-          <p className="text-xs text-slate-400">Perkiraan nilai persediaan berdasarkan harga grosir.</p>
+          <p className="text-xs text-slate-400">
+            Total stok {totalInventoryUnits.toLocaleString('id-ID')} unit berdasarkan harga grosir.
+          </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -293,22 +297,22 @@ export default function ManagerOverview({
                 <table className="min-w-full text-sm">
                   <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Waktu
                       </th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         SKU
                       </th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Produk
                       </th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Tipe
                       </th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Status
                       </th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">
+                      <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Qty
                       </th>
                     </tr>
@@ -320,7 +324,7 @@ export default function ManagerOverview({
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70">
-                          <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+                          <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap tabular-nums">
                             {new Intl.DateTimeFormat('id-ID', {
                               day: '2-digit',
                               month: 'short',
@@ -335,16 +339,16 @@ export default function ManagerOverview({
                             {item.product?.name ?? 'Produk tidak dikenal'}
                           </td>
                           <td className="px-3 py-2 text-xs whitespace-nowrap">
-                            <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                            <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
                               {typeLabelMap[type] ?? type}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-xs whitespace-nowrap">
-                            <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                            <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
                               {statusLabelMap[status] ?? status}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-sm text-slate-800 text-right whitespace-nowrap">
+                          <td className="px-3 py-2 text-sm text-slate-800 text-right whitespace-nowrap tabular-nums">
                             {item.quantity} {item.product?.unit ?? 'pcs'}
                           </td>
                         </tr>

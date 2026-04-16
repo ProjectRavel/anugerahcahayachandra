@@ -86,6 +86,7 @@ export default async function DashboardHome() {
     ])
 
     const products = (inventoryAgg.data ?? []) as { stock: number; price_wholesale: number }[]
+    const totalInventoryUnits = products.reduce((sum, p) => sum + (p.stock || 0), 0)
     const totalInventoryValue = products.reduce(
       (sum, p) => sum + (p.stock || 0) * (Number(p.price_wholesale) || 0),
       0
@@ -159,6 +160,7 @@ export default async function DashboardHome() {
     return (
       <ManagerOverview
         totalInventoryValue={totalInventoryValue}
+        totalInventoryUnits={totalInventoryUnits}
         packingQueue={packingQueue}
         todayAttendance={todayAttendance}
         totalStaff={totalStaff}
@@ -224,6 +226,7 @@ export default async function DashboardHome() {
       { count: processingCount },
       { count: packingCount },
       { count: shippedCount },
+      { data: inventoryRows },
       { data: queueOrders },
     ] = await Promise.all([
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
@@ -236,6 +239,7 @@ export default async function DashboardHome() {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'PACKING'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'SHIPPED'),
+      supabase.from('products').select('stock, price_wholesale'),
       supabase
         .from('orders')
         .select(
@@ -261,6 +265,12 @@ export default async function DashboardHome() {
     }
 
     const activeOrders = (queueOrders ?? []) as QueueOrderRow[]
+    const products = (inventoryRows ?? []) as { stock: number; price_wholesale: number }[]
+    const totalInventoryUnits = products.reduce((sum, p) => sum + (p.stock || 0), 0)
+    const totalInventoryValue = products.reduce(
+      (sum, p) => sum + (p.stock || 0) * (Number(p.price_wholesale) || 0),
+      0
+    )
 
     return (
       <div className="space-y-8">
@@ -268,6 +278,26 @@ export default async function DashboardHome() {
           <h1 className="text-2xl font-bold text-slate-900">Overview Supervisor</h1>
           <p className="text-sm text-slate-500 mt-1">Pantau antrean dan validasi operasional gudang.</p>
         </div>
+
+        <section>
+          <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">
+            Ringkasan Inventori
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <StatsCard
+              title="Total Stok"
+              value={totalInventoryUnits.toLocaleString('id-ID')}
+              subtitle="akumulasi unit seluruh produk"
+              accent="indigo"
+            />
+            <StatsCard
+              title="Total Nilai Inventori"
+              value={`Rp ${totalInventoryValue.toLocaleString('id-ID')}`}
+              subtitle="berdasarkan harga grosir"
+              accent="emerald"
+            />
+          </div>
+        </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
